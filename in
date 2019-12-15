@@ -1,0 +1,6 @@
+trajfile traj.xyz
+outputfile stats
+nstep 5000
+natoms 100
+temperature 300
+
