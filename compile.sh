@@ -1,5 +1,6 @@
 #!/bin/bash
-declare filename="largon.x"
+declare exec_name="largon.x"
+declare exec_name_parallel="largon-p.x"
 declare -a files=("routines.f90"           \
                   "largon.f90" \
                   )
@@ -26,7 +27,8 @@ do
       fi
 done
 
-gfortran -fopenmp  "${files[@]}" -o "$filename"
+gfortran   "${files[@]}" -o "$exec_name"
+gfortran -fopenmp  "${files[@]}" -o "$exec_name_parallel"
 
 for file in *.o ; do
    if [ -f $file ]; then

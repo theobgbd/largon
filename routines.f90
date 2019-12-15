@@ -14,10 +14,10 @@ subroutine read_input(temperature,tstep,friction, &
                       outputfile,trajfile,statfile, &
                       maxneighbours,idum)
   implicit none
-  real,           intent(out) :: temperature
-  real,           intent(out) :: tstep
-  real,           intent(out) :: friction
-  real,           intent(out) :: listcutoff
+  double precision,           intent(out) :: temperature
+  double precision,           intent(out) :: tstep
+  double precision,           intent(out) :: friction
+  double precision,           intent(out) :: listcutoff
   integer,        intent(out) :: nstep
   integer,        intent(out) :: natoms
   integer,        intent(out) :: nconfig
@@ -113,12 +113,12 @@ subroutine read_positions(inputfile,natoms,positions,cell)
   implicit none
   character(*), intent(in)  :: inputfile
   integer,      intent(in)  :: natoms
-  real,         intent(out) :: positions(3,natoms)
-  real,         intent(out) :: cell(3)
+  double precision,         intent(out) :: positions(3,natoms)
+  double precision,         intent(out) :: cell(3)
   integer :: iatom
   character(100) :: atomname
   open(10,file=inputfile)
-  read(10,*)
+  read(10,*) 
   read(10,*) cell
   do iatom=1,natoms
     read(10,*) atomname,positions(:,iatom)
@@ -131,8 +131,8 @@ end subroutine read_positions
 ! Lennard-Jones potential function
 function lj_pot(r,sigma,eps) result(u)
     !
-    real , intent(in)    :: r, sigma, eps
-    real                          :: u 
+    double precision , intent(in)    :: r, sigma, eps
+    double precision                          :: u
     !
     u = 4*eps*((sigma/r)**12 - (sigma/r)**6 )
     !
@@ -141,72 +141,78 @@ end function lj_pot
 ! Coulombic potential function
 function el_pot(r,c1,c2) result(u)
     !
-    real , intent(in)   :: r,c1,c2
-    real,  parameter 	:: const = 9.0d9   
-    real                :: u 
+    double precision , intent(in)   :: r,c1,c2
+    double precision,  parameter 	:: const = 9.0d9
+    double precision                :: u
     !
     u = const * (c1*c2) / r
     !
 end function el_pot
 !
 ! Function for total energy
-function total_energy(natoms,positions,charges, sigma, eps) result(u)
+function total_energy(natoms,positions,charges,cell, sigma, eps) result(u)
   ! External
   integer,        intent(in)    :: natoms
-  real,        	  intent(in)    :: eps, sigma
-  real ,          intent(in)    :: positions(3,natoms)      ! atomic positions
-  real ,          intent(in)    :: charges  (natoms)      ! atomic positions
-  real 			                :: u
+  double precision,        	  intent(in)    :: eps, sigma
+  double precision ,          intent(in)    :: positions(3,natoms)      ! atomic positions
+  double precision ,          intent(in)    :: charges  (natoms)      ! atomic positions
+  double precision     			                :: u, dx, dy, dz, rx, ry, rz
+  double precision                 :: cell(3)         ! cell size
   ! Internal
-  integer 						:: i,j,k 
-  real 		:: r 
+  integer 						:: i,j,k
+  double precision 		:: r
   !
   U = 0.0D0
   !
-  !$omp parallel do private(i,j,r) reduction(+:u)
+  !$omp parallel do private(i,j,r,rx,ry,rz,dx,dy,dz) reduction(+:U)
   !
   do i=1,natoms
     !
     do j=1, natoms
       !
-      if (i .ne. j) then 
+      if (i .ne. j) then
         !
-        r = sqrt(    (positions(1,i) - positions(1,j))**2 &
-                 +   (positions(2,i) - positions(2,j))**2 &
-                 +   (positions(3,i) - positions(3,j))**2)
+        dx = positions(1,i) - positions(1,j)
+        dy = positions(2,i) - positions(2,j)
+        dz = positions(3,i) - positions(3,j)
+        rx = dx - cell(1)*dfloat(idint(dx/(cell(1)/2)))
+        ry = dy - cell(2)*dfloat(idint(dy/(cell(2)/2)))
+        rz = dz - cell(3)*dfloat(idint(dz/(cell(3)/2)))
+        !
+        r = sqrt( rx**2 + ry**2 + rz**2 )
         !
         U = U + el_pot(r,charges(i), charges(j)) + lj_pot(r,sigma,eps)
-        ! 
+        !
       end if
       !
     end do
     !
   end do
   !
-  !$omp end parallel do 
-  !  
-  return 
+  !$omp end parallel do
+  !
+  return
   !
 end function total_energy
 !
 ! Random position subroutine
-subroutine random_conf(natoms, cell,positions)
+subroutine random_conf(natoms, cell,positions_old, positions)
 	integer,        intent(in)    	 :: natoms
-  	real ,          intent(inout)    :: positions(3,natoms)
- 	real ,          intent(inout)    :: cell(3)
-
-  	integer :: i,k
+  double precision ,          intent(inout)    :: positions(3,natoms), positions_old(3,natoms)
+ 	double precision ,          intent(inout)    :: cell(3)
+  double precision :: newatom(3)
+  double precision :: atomid
+	integer :: i,k
 	!
-	do i=1, natoms
-    do k=1,3
-        !
-        call random_number(positions(k,i))
-        positions(k,i) = positions(k,i) * cell(k) 
-        !
-      end do
-      !
-  end do 
+  call random_number(atomid)
+  k = int(atomid*natoms)
+  !
+	call random_number(newatom)
+  newatom(:) = newatom(:) * cell(:)
+  !write(*,*) k, newatom
+  positions(:,:) = positions_old(:,:)
+  positions(:,k) = newatom(:)
+  !
 end subroutine random_conf
 !
 end module routines
-
