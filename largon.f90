@@ -25,15 +25,10 @@ program largon
   ! all of them have a reasonable default value, set in read_input()
   double precision           :: tstep          ! simulation timestep
   double precision           :: temperature    ! temperature
-  double precision           :: friction       ! friction for Langevin dynamics (for NVE, use 0)
   double precision           :: listcutoff     ! cutoff for neighbour list
   double precision           :: init_energy_lim! threshold engery for the inital configuration energy
   integer        :: nstep          ! number of steps
   integer        :: nconfig        ! stride for output of configurations
-  integer        :: nstat          ! stride for output of statistics
-  integer        :: maxneighbour   ! maximum average number of neighbours per atom
-  integer        :: idum           ! seed
-  logical        :: wrapatoms      ! if true, atomic coordinates are written wrapped in minimal cell
   character(256) :: outputfile     ! name of file with final configuration (xyz)
   character(256) :: trajfile       ! name of the trajectory file (xyz)
   character(256) :: statfile       ! name of the file with statistics
@@ -43,13 +38,12 @@ program largon
   integer :: iatom
   integer :: i,j,k,n,m, id
   double precision :: internal_energy,internal_energy_tmp, sigma, eps, bfact, deltaE
-  double precision, parameter :: kb = 1.38d-23
+  double precision, parameter :: kb = 1.38d-23 ! Boltzmann constant
   !
-  call read_input(temperature,tstep,friction, &
-                  listcutoff,nstep, natoms,nconfig,nstat, &
-                  wrapatoms, &
-                  outputfile,trajfile,statfile, &
-                  maxneighbour,idum)
+  ! Reading the input file
+  call read_input(temperature,tstep,eps, sigma, &
+                  listcutoff,nstep, natoms,nconfig,&
+                  outputfile,trajfile,statfile)
   !
   write(*,*) "Number of configurations :", nstep
   write(*,*) "Number of atoms          :", natoms
@@ -67,33 +61,28 @@ program largon
   !$ end if
   !$omp end parallel
   !
-  ! allocation of dynamical arrays
+  ! arrays allocation 
   allocate(positions(3,natoms))
   allocate(positions_tmp(3,natoms))
   allocate(charges(natoms))
   !
-  ! Atom setting override
+  ! Atomic setting override
   sigma  = 1
   eps    = 2
   charges(:) = 0.0d0
   cell(:) = (/10,10,10/)
   !
   ! Initialize with a random config
-  !
   write(*,*) 'Selecting initial configuration ...'
   !
-  init_energy_lim = 1.0D20
+  init_energy_lim = 1.0D5
   !
   init_conformity : do ! infinite loop until a correct config is found
     !
     do i=1, natoms
       do k=1,3
-        !
-        call random_number(positions)
-        positions(1,:) = positions(1,:) * cell(1)
-        positions(2,:) = positions(2,:) * cell(2)
-        positions(3,:) = positions(3,:) * cell(3)
-        !
+        call random_number(positions(k,:))         ! Pick a random number
+        positions(k,:) = positions(k,:) * cell(k)  ! Scale to cell size
       end do
       !
     end do
@@ -111,12 +100,13 @@ program largon
     !
   end do init_conformity
   !
-  !MC-Metropolis sampling algorithm
+  !----------------------------------------
+  ! Begin MC-Metropolis sampling algorithm
+  !----------------------------------------
+  n = 0 ! Configration iterators to zero
+  m = 0 !
   !
-  n = 0
-  m = 0
-  !
-  config_loop : do 
+  config_loop : do ! Infinite loop until n valid configurations are sampled
     !
     internal_energy  = total_energy(natoms,positions,charges, cell, sigma, eps)
     !
@@ -180,14 +170,24 @@ program largon
     n = n + 1
     m = m + 1
     !
+    if (mod(n,100) .eq. 0) then
+      write(*,*) "Number of valid conf. sampled :  ", n, "Energy : ", internal_energy
+    end if
+    !
   end do config_loop
+  !--------------------------------------
+  ! End MC-Metropolis algorithm
+  !-------------------------------------- 
   !
   write(*,*) "Done !"
   !
-  ! deallocation of dynamical arrays
+  ! Dynamical arrays deallocation 
   deallocate(positions)
   deallocate(positions_tmp)
   deallocate(charges)
+  !
+  close(10)
+  close(20)
   !
   return
   !
